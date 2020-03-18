@@ -39,13 +39,14 @@ go reporter.Start()
 ```golang
 // Event triggers here
 func GETEventTriggered(endpoint, host string, val float64){
+    msg := testCollector.GenerateMsg()
     // map values to record
     counterValues := map[string]string{
 		"endpoint":    endpoint,
 		"host":        host,
     }
     // set the value 
-    sampleTrackGET.SetPayload(counterValues)
+    msg.SetPayload(counterValues)
     msg.SetValue(val)
     // send the reporter message to reporter
     reporter.In() <- sampleTrackGET
@@ -57,5 +58,5 @@ To catch certain event signal
 // to collect ReporterMsg
 <-reporter.TestOut().MsgOut
 // to collect write file to disk signal 
-<-reporterWithTestOut.TestOut().StringOut
+<-reporter.TestOut().StringOut
 ```
