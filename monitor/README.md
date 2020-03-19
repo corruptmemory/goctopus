@@ -14,49 +14,75 @@ This toolbox provides an API that helps to consistently report system metrics to
 5. Send reporter message to the reporter at where the event is triggered.
 ```golang
 bufferSize := uint16(1000)
-flushDuration := 1 * time.Second
-testOut = &ReporterOut{
-		make(chan ReporterMsg),
-		make(chan string),
-	}
-// testOut could be an empty &ReporterOut{} struct
-reporter := monitor.NewReporter(bufferSize, "Reporter Name", flushDuration, testOut)
-// This is an example, you can use pre-defined collectors from collectorscache.go
-// i.e. sampleTrackGET = GETCollector
-sampleTrackGET := monitor.NewCountsCollector(
-		"sample_get_counter", // name
-		"The number of GET operations.", // help message
-		monitor.IncCounter, // metric collector type
-		[]string{"endpoint", "host"}, //labels
-	)
+
+// how frequent the monitor write to disk
+flushInterval := 15 * time.Second
+// if you don't want to track event signals
+// set this to false
+trackEvent = true
+reporter := monitor.NewReporter(bufferSize, "Reporter Name", flushInterval, trackEvent)
+
+// channels for event signals
+msgEventChan        = reporter.MsgEvent()
+toDiskEventChan     = reporter.ToDiskEvent()
+
+// Create a prometheus CounterVec
+collectorName := "test_counter"
+samplePromCollector := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: collectorName,
+			Help: "A sample test count",
+		},
+		[]string{"label1", "label2"},
+    )
+
+// Wrap it with a MetricCollector
+testMetricCollector = NewMetricCollector(collectorName, monitor.IncCounter, testPromCollector)
+
+// Register metric collectors in a monitor.MetricCollector list
 metrics := []monitor.MetricCollector{
-    sampleTrackGET,
+    testMetricCollector,
+    // more metrics ...
 }
 reporter.Register(metrics)
+
+// start the reporter
 go reporter.Start()
 ```
 
 ```golang
 // Event triggers here
 func GETEventTriggered(endpoint, host string, val float64){
-    msg := testCollector.GenerateMsg()
+    msg := testMetricCollector.GenerateMsg()
     // map values to record
     counterValues := map[string]string{
-		"endpoint":    endpoint,
-		"host":        host,
+		"label1":    endpoint,
+		"label2":        host,
     }
     // set the value 
     msg.SetPayload(counterValues)
+    // if using a monitor.AddCounter, don't forget to call SetValue()
     msg.SetValue(val)
     // send the reporter message to reporter
+    // if don't send message to reporter, the message won't be tracked
     reporter.In() <- sampleTrackGET
 }
 ```
 
-To catch certain event signal
+To catch reporter event signals
 ```golang
-// to collect ReporterMsg
-<-reporter.TestOut().MsgOut
-// to collect write file to disk signal 
-<-reporter.TestOut().StringOut
+go func(){
+    // a channel of ReporterMsg
+    for sendMsgEvent := range msgEventChan {
+        // do something here...
+    }
+}()
+
+go func(){
+    // a channel of String
+    for writeToDiskEvent := range toDiskEventChan {
+        // do something here...
+    }
+}()
+
 ```

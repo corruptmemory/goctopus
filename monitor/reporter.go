@@ -15,29 +15,39 @@ type reporter struct {
 	metricsIn     chan ReporterMsg
 	counterMap    map[string]*prometheus.CounterVec
 	registry      *prometheus.Registry
-	flushDuration time.Duration
+	flushInterval time.Duration
 	done          chan struct{}
-	// reporterOut is used in test only
-	testOut *ReporterOut
+	// event is used to observe send, write to disk events
+	event *ReporterEvent
 }
 
-type ReporterOut struct {
+type ReporterEvent struct {
 	MsgOut    chan ReporterMsg
 	StringOut chan string
 }
 
-func NewReporter(bufferSize uint16, reporterName string, flushDuration time.Duration, testOut *ReporterOut) *reporter {
+func NewReporter(bufferSize uint16, reporterName string, flushInterval time.Duration, trackEvent bool) *reporter {
 	in := make(chan ReporterMsg, bufferSize)
 	c := make(map[string]*prometheus.CounterVec)
 	registry := prometheus.NewRegistry()
+	var event *ReporterEvent
+	if trackEvent == true {
+		event = &ReporterEvent{
+			make(chan ReporterMsg),
+			make(chan string),
+		}
+	} else {
+		event = &ReporterEvent{}
+	}
+
 	r := reporter{
 		reporterName:  reporterName,
 		metricsIn:     in,
 		counterMap:    c,
 		registry:      registry,
-		flushDuration: flushDuration,
+		flushInterval: flushInterval,
 		done:          make(chan struct{}),
-		testOut:       testOut,
+		event:         event,
 	}
 
 	go r.run()
@@ -76,7 +86,7 @@ func (r *reporter) writeToFile() {
 }
 
 func (r *reporter) Start() {
-	ticker := time.NewTicker(r.flushDuration)
+	ticker := time.NewTicker(r.flushInterval)
 	defer ticker.Stop()
 
 	for {
@@ -85,8 +95,8 @@ func (r *reporter) Start() {
 			return
 		case <-ticker.C:
 			r.writeToFile()
-			if r.testOut.StringOut != nil {
-				r.testOut.StringOut <- WroteFileToDiskMsg
+			if r.event.StringOut != nil {
+				r.event.StringOut <- WroteFileToDiskMsg
 			}
 		}
 	}
@@ -94,43 +104,63 @@ func (r *reporter) Start() {
 
 func (r *reporter) Register(metrics []MetricCollector) {
 	for _, metric := range metrics {
-		metricCount := prometheus.NewCounterVec(
-			prometheus.CounterOpts{
-				Name: metric.Name(),
-				Help: metric.HelpMsg(),
-			},
-			metric.LabelKey(),
-		)
-		r.counterMap[metric.Name()] = metricCount
-		r.registry.MustRegister(metricCount)
+		r.counterMap[metric.Name()] = metric.Collector()
+		r.registry.MustRegister(metric.Collector())
 	}
 }
 
 func (r *reporter) run() {
 	incr := func(msg ReporterMsg) {
-		if msg.MetricType() == AddCounter {
-			r.counterMap[msg.Name()].With(msg.Payload()).Add(msg.Value())
+		if collector, ok := r.counterMap[msg.Name()]; !ok {
+			log.Printf("unregistered collector %v\n", msg.Name())
 			return
+		} else {
+			if msg.MetricType() == AddCounter {
+				collector.With(msg.Payload()).Add(msg.Value())
+				return
+			}
+			collector.With(msg.Payload()).Inc()
 		}
-		r.counterMap[msg.Name()].With(msg.Payload()).Inc()
+
 	}
 
 	for msg := range r.metricsIn {
-		if r.testOut.MsgOut != nil {
-			r.testOut.MsgOut <- msg.Clone()
+		if r.event.MsgOut != nil {
+			r.event.MsgOut <- msg.Clone()
 		}
 		incr(msg)
 	}
 }
 
-// TestOut() provide channels to send out signals
-// test use only
-func (r *reporter) TestOut() *ReporterOut {
-	return r.testOut
+// ToDiskEvent observes write to disk events
+func (r *reporter) ToDiskEvent() <-chan string {
+	out := make(chan string)
+
+	go func() {
+		defer close(out)
+		for msg := range r.event.StringOut {
+			out <- msg
+		}
+	}()
+	return out
+}
+
+// MsgEvent observes message passing on to Prometheus
+func (r *reporter) MsgEvent() <-chan ReporterMsg {
+	out := make(chan ReporterMsg)
+	go func() {
+		defer close(out)
+		for msg := range r.event.MsgOut {
+			out <- msg
+		}
+	}()
+	return out
 }
 
 func (r *reporter) DrainAndStop() {
 	close(r.metricsIn)
+	close(r.event.MsgOut)
+	close(r.event.StringOut)
 	r.done <- struct{}{}
 	close(r.done)
 }

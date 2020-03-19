@@ -7,32 +7,42 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 var (
-	testOut = &ReporterOut{
-		make(chan ReporterMsg),
-		make(chan string),
-	}
-	flushDuration       = 1 * time.Second
-	reporterWithTestOut = NewReporter(uint16(1000), "test-reporter", flushDuration, testOut)
-	testCollector       = GETCollector
+	flushInterval     = 1 * time.Second
+	trackEvent        = true
+	testReporter      = NewReporter(uint16(1000), "test-reporter", flushInterval, trackEvent)
+	collectorName     = "test_collector"
+	mockLabel1        = "endpoint"
+	mockLabel2        = "host"
+	testPromCollector = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: collectorName,
+			Help: "A sample test count",
+		},
+		[]string{mockLabel1, mockLabel2},
+	)
+	testMetricCollector = NewMetricCollector(collectorName, AddCounter, testPromCollector)
+	msgEventChan        = testReporter.MsgEvent()
+	toDiskEventChan     = testReporter.ToDiskEvent()
 )
 
 func TestIn(t *testing.T) {
 	randNum := rand.New(rand.NewSource(99)).Float64()
-	msg := testCollector.GenerateMsg()
+	msg := testMetricCollector.GenerateMsg()
 	// map values to record
 	testValues := map[string]string{
-		"endpoint": "test-endpoint",
-		"host":     "test-host",
+		mockLabel1: "test-endpoint",
+		mockLabel2: "test-host",
 	}
 	msg.SetPayload(testValues)
 	msg.SetValue(randNum)
+	testReporter.In() <- msg
 
-	reporterWithTestOut.In() <- msg
-
-	if msgIn, ok := <-reporterWithTestOut.TestOut().MsgOut; !ok {
+	if msgIn, ok := <-msgEventChan; !ok {
 		t.Error("Passing ReporterMsg failed")
 	} else {
 		if ok := reflect.DeepEqual(msgIn.Payload(), testValues); !ok {
@@ -43,32 +53,32 @@ func TestIn(t *testing.T) {
 			t.Errorf("Got wrong value, expected %v, got %v\n", randNum, msgIn.Value())
 		}
 
-		if msgIn.MetricType() != IncCounter {
+		if msgIn.MetricType() != AddCounter {
 			t.Errorf("Got wrong metric type, expected %v, got %v\n", IncCounter, msgIn.MetricType())
 		}
 	}
 }
 
 func TestWriteToFile(t *testing.T) {
-	go reporterWithTestOut.Start()
+	go testReporter.Start()
 	randNum := rand.New(rand.NewSource(99)).Float64()
-	msg := testCollector.GenerateMsg()
+	msg := testMetricCollector.GenerateMsg()
 	// map values to record
 	testValues := map[string]string{
-		"endpoint": "test-endpoint",
-		"host":     "test-host",
+		mockLabel1: "test-endpoint",
+		mockLabel2: "test-host",
 	}
 	msg.SetPayload(testValues)
 	msg.SetValue(randNum)
 
-	reporterWithTestOut.In() <- msg
-	<-reporterWithTestOut.TestOut().MsgOut
-	stringOutMsg := <-reporterWithTestOut.TestOut().StringOut
+	testReporter.In() <- msg
+	<-msgEventChan
+	stringOutMsg := <-toDiskEventChan
 	if stringOutMsg != WroteFileToDiskMsg {
 		t.Errorf("Got wrong msg out, expected %v, got %v\n", WroteFileToDiskMsg, stringOutMsg)
 	}
 
-	outFilePath := fmt.Sprintf("%s/%s%s", PrometheusExportDir, reporterWithTestOut.Name(), PrometheusSuffix)
+	outFilePath := fmt.Sprintf("%s/%s%s", PrometheusExportDir, testReporter.Name(), PrometheusSuffix)
 	if _, err := os.Stat(outFilePath); err != nil {
 		t.Errorf("File %v does not exist\n", outFilePath)
 	}
@@ -76,8 +86,8 @@ func TestWriteToFile(t *testing.T) {
 }
 
 func TestMain(m *testing.M) {
-	reporterWithTestOut.Register([]MetricCollector{testCollector})
+	testReporter.Register([]MetricCollector{testMetricCollector})
 	code := m.Run()
-	reporterWithTestOut.DrainAndStop()
+	testReporter.DrainAndStop()
 	os.Exit(code)
 }
