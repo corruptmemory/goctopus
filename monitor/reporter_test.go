@@ -88,6 +88,6 @@ func TestWriteToFile(t *testing.T) {
 func TestMain(m *testing.M) {
 	testReporter.Register([]MetricCollector{testMetricCollector})
 	code := m.Run()
-	testReporter.DrainAndStop()
+	testReporter.Close()
 	os.Exit(code)
 }

@@ -31,7 +31,7 @@ func NewReporter(bufferSize uint16, reporterName string, flushInterval time.Dura
 	c := make(map[string]*prometheus.CounterVec)
 	registry := prometheus.NewRegistry()
 	var event *ReporterEvent
-	if trackEvent == true {
+	if trackEvent {
 		event = &ReporterEvent{
 			make(chan ReporterMsg),
 			make(chan string),
@@ -88,16 +88,22 @@ func (r *reporter) writeToFile() {
 func (r *reporter) Start() {
 	ticker := time.NewTicker(r.flushInterval)
 	defer ticker.Stop()
-
+	if r.event.StringOut != nil {
+		defer close(r.event.StringOut)
+	}
+	writeToDisk := func() {
+		r.writeToFile()
+		if r.event.StringOut != nil {
+			r.event.StringOut <- WroteFileToDiskMsg
+		}
+	}
 	for {
 		select {
 		case <-r.done:
+			writeToDisk()
 			return
 		case <-ticker.C:
-			r.writeToFile()
-			if r.event.StringOut != nil {
-				r.event.StringOut <- WroteFileToDiskMsg
-			}
+			writeToDisk()
 		}
 	}
 }
@@ -121,9 +127,11 @@ func (r *reporter) run() {
 			}
 			collector.With(msg.Payload()).Inc()
 		}
-
 	}
 
+	if r.event.MsgOut != nil {
+		defer close(r.event.MsgOut)
+	}
 	for msg := range r.metricsIn {
 		if r.event.MsgOut != nil {
 			r.event.MsgOut <- msg.Clone()
@@ -157,10 +165,8 @@ func (r *reporter) MsgEvent() <-chan ReporterMsg {
 	return out
 }
 
-func (r *reporter) DrainAndStop() {
+func (r *reporter) Close() {
 	close(r.metricsIn)
-	close(r.event.MsgOut)
-	close(r.event.StringOut)
 	r.done <- struct{}{}
 	close(r.done)
 }

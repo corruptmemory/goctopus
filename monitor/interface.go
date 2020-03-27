@@ -35,4 +35,6 @@ type Reporter interface {
 	MsgEvent() <-chan ReporterMsg
 	// Start starts the reporter
 	Start()
+	// Shutdown the reporter
+	Close()
 }
