@@ -12,32 +12,27 @@ import (
 )
 
 var (
-	flushInterval     = 1 * time.Second
-	trackEvent        = true
-	testReporter      = NewReporter(uint16(1000), "test-reporter", flushInterval, trackEvent)
-	collectorName     = "test_collector"
-	mockLabel1        = "endpoint"
-	mockLabel2        = "host"
-	testPromCollector = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: collectorName,
-			Help: "A sample test count",
-		},
-		[]string{mockLabel1, mockLabel2},
-	)
-	testMetricCollector = NewMetricCollector(collectorName, AddCounter, testPromCollector)
-	msgEventChan        = testReporter.MsgEvent()
-	toDiskEventChan     = testReporter.ToDiskEvent()
+	flushInterval = 1 * time.Second
+	trackEvent    = true
+	testReporter  = NewReporter(uint16(1000), "test-reporter", flushInterval, trackEvent)
+	collectorName = "test_collector"
+	mockLabel1    = "endpoint"
+	mockLabel2    = "host"
+
+	msgEventChan    = testReporter.MsgEvent()
+	toDiskEventChan = testReporter.ToDiskEvent()
 )
 
 func TestIn(t *testing.T) {
+
 	randNum := rand.New(rand.NewSource(99)).Float64()
-	msg := testMetricCollector.GenerateMsg()
+	msg := testReporter.GenerateMsg(collectorName)
 	// map values to record
 	testValues := map[string]string{
 		mockLabel1: "test-endpoint",
 		mockLabel2: "test-host",
 	}
+	msg.SetMetricType(AddCounter)
 	msg.SetPayload(testValues)
 	msg.SetValue(randNum)
 	testReporter.In() <- msg
@@ -62,12 +57,13 @@ func TestIn(t *testing.T) {
 func TestWriteToFile(t *testing.T) {
 	go testReporter.Start()
 	randNum := rand.New(rand.NewSource(99)).Float64()
-	msg := testMetricCollector.GenerateMsg()
+	msg := testReporter.GenerateMsg(collectorName)
 	// map values to record
 	testValues := map[string]string{
 		mockLabel1: "test-endpoint",
 		mockLabel2: "test-host",
 	}
+	msg.SetMetricType(AddCounter)
 	msg.SetPayload(testValues)
 	msg.SetValue(randNum)
 
@@ -86,7 +82,14 @@ func TestWriteToFile(t *testing.T) {
 }
 
 func TestMain(m *testing.M) {
-	testReporter.Register([]MetricCollector{testMetricCollector})
+	testPromCollector := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: collectorName,
+			Help: "A sample test count",
+		},
+		[]string{mockLabel1, mockLabel2},
+	)
+	testReporter.Register([]*prometheus.CounterVec{testPromCollector})
 	code := m.Run()
 	testReporter.Close()
 	os.Exit(code)

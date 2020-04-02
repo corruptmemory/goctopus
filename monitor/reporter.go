@@ -1,6 +1,7 @@
 package monitor
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -19,6 +20,12 @@ type reporter struct {
 	done          chan struct{}
 	// event is used to observe send, write to disk events
 	event *ReporterEvent
+}
+
+// collectorDesc to unmarshal prometheus.Desc string
+type collectorDesc struct {
+	Name string `json:"fqName"`
+	Help string `json:"help"`
 }
 
 type ReporterEvent struct {
@@ -108,18 +115,31 @@ func (r *reporter) Start() {
 	}
 }
 
-func (r *reporter) Register(metrics []MetricCollector) {
-	for _, metric := range metrics {
-		r.counterMap[metric.Name()] = metric.Collector()
-		r.registry.MustRegister(metric.Collector())
+func (r *reporter) Register(cs []*prometheus.CounterVec) {
+	descChan := make(chan *prometheus.Desc, len(cs))
+	defer close(descChan)
+	cd := &collectorDesc{}
+	for _, c := range cs {
+		r.registry.MustRegister(c)
+		c.Describe(descChan)
+		descriptor := <-descChan
+		err := json.Unmarshal([]byte(JsonUnmarshalHelper(descriptor.String()[4:])), cd)
+		if err != nil {
+			log.Fatalf("Unmarshal collector description -%v- failed", c)
+			panic(err)
+		}
+		r.counterMap[cd.Name] = c
 	}
+}
+
+func (r *reporter) GenerateMsg(collectorName string) ReporterMsg {
+	return NewReporterMsg(collectorName)
 }
 
 func (r *reporter) run() {
 	incr := func(msg ReporterMsg) {
 		if collector, ok := r.counterMap[msg.Name()]; !ok {
 			log.Printf("unregistered collector %v\n", msg.Name())
-			return
 		} else {
 			if msg.MetricType() == AddCounter {
 				collector.With(msg.Payload()).Add(msg.Value())

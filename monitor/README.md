@@ -27,21 +27,18 @@ msgEventChan        = reporter.MsgEvent()
 toDiskEventChan     = reporter.ToDiskEvent()
 
 // Create a prometheus CounterVec
-collectorName := "test_counter"
+CollectorName := "test_counter"
 samplePromCollector := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: collectorName,
+			Name: CollectorName,
 			Help: "A sample test count",
 		},
 		[]string{"label1", "label2"},
     )
 
-// Wrap it with a MetricCollector
-testMetricCollector = NewMetricCollector(collectorName, monitor.IncCounter, testPromCollector)
-
-// Register metric collectors in a monitor.MetricCollector list
-metrics := []monitor.MetricCollector{
-    testMetricCollector,
+// Register metrics
+metrics := []*prometheus.CounterVec{
+    samplePromCollector,
     // more metrics ...
 }
 reporter.Register(metrics)
@@ -53,19 +50,23 @@ go reporter.Start()
 ```golang
 // Event triggers here
 func GETEventTriggered(endpoint, host string, val float64){
-    msg := testMetricCollector.GenerateMsg()
+    // generate a reporterMsg based on metric name
+    msg := reporter.GenerateMsg(CollectorName)
     // map values to record
     counterValues := map[string]string{
 		"label1":    endpoint,
 		"label2":        host,
     }
+    // set a metric type
+    // AddCounter or IncCounter
+    msg.SetMetricType(monitor.AddCounter)
     // set the value 
     msg.SetPayload(counterValues)
     // if using a monitor.AddCounter, don't forget to call SetValue()
     msg.SetValue(val)
     // send the reporter message to reporter
     // if don't send message to reporter, the message won't be tracked
-    reporter.In() <- sampleTrackGET
+    reporter.In() <- msg
 }
 ```
 

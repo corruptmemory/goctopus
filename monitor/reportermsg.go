@@ -2,6 +2,8 @@ package monitor
 
 // Implement ReporterMsg
 
+// TODO: plan to convert reporterMsg type into a RealtimeResult type.
+
 type reporterMsg struct {
 	name       string
 	data       map[string]string
@@ -9,10 +11,9 @@ type reporterMsg struct {
 	metricType uint8
 }
 
-func NewReporterMsg(name string, metricType uint8) ReporterMsg {
+func NewReporterMsg(name string) ReporterMsg {
 	return &reporterMsg{
-		name:       name,
-		metricType: metricType,
+		name: name,
 	}
 }
 
@@ -35,6 +36,10 @@ func (r *reporterMsg) Value() float64 {
 
 func (r *reporterMsg) SetValue(val float64) {
 	r.value = val
+}
+
+func (r *reporterMsg) SetMetricType(metricTyp uint8) {
+	r.metricType = metricTyp
 }
 
 func (r *reporterMsg) MetricType() uint8 {
