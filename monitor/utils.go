@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 func RemoveContents(dir string) error {
@@ -41,4 +42,16 @@ func EnsureDir(path string, clean bool) error {
 		}
 	}
 	return nil
+}
+
+func JsonUnmarshalHelper(s string) string {
+	s = strings.Replace(s, "fqName", "\"fqName\"", 1)
+	s = strings.Replace(s, "help", "\"help\"", 1)
+	s = strings.Replace(s, "constLabels", "\"constLabels\"", 1)
+	s = strings.Replace(s, "variableLabels", "\"variableLabels\"", 1)
+	s = string(s[0]) + strings.Replace(s[1:], "{", "\"{", -1)
+	s = strings.Replace(s[:len(s)-1], "}", "}\"", -1) + string(s[len(s)-1])
+	s = strings.Replace(s, "[", "\"[", -1)
+	s = strings.Replace(s, "]", "]\"", -1)
+	return s
 }
