@@ -20,7 +20,7 @@ type Reporter interface {
 	// Register registers all the metrics on prometheus
 	Register([]*prometheus.CounterVec)
 	// GenerateMsg generates a ReporterMsg to pass data to reporter
-	GenerateMsg() ReporterMsg
+	GenerateMsg(string) ReporterMsg
 	// In() takes in MetricWrappers to update metrics, write only
 	In() chan<- ReporterMsg
 	// ToDiskEvent returns a channel of string, which observes write to disk events

@@ -33,7 +33,7 @@ type ReporterEvent struct {
 	StringOut chan string
 }
 
-func NewReporter(bufferSize uint16, reporterName string, flushInterval time.Duration, trackEvent bool) *reporter {
+func NewReporter(bufferSize uint16, reporterName string, flushInterval time.Duration, trackEvent bool) Reporter {
 	in := make(chan ReporterMsg, bufferSize)
 	c := make(map[string]*prometheus.CounterVec)
 	registry := prometheus.NewRegistry()
