@@ -1,12 +1,14 @@
 package monitor
 
+type CollectorType uint8
+
 const (
 	// List of prometheus metric collectors types
 
 	// IncCounter increase by 1
-	IncCounter = uint8(0)
+	IncCounter CollectorType = iota
 	// AddCounter increase by an arbitrary value
-	AddCounter = uint8(1)
+	AddCounter
 	// add from here...
 
 	// Other constants
