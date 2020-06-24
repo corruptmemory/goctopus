@@ -8,7 +8,7 @@ type reporterMsg struct {
 	name       string
 	data       map[string]string
 	value      float64
-	metricType uint8
+	metricType CollectorType
 }
 
 func NewReporterMsg(name string) ReporterMsg {
@@ -38,11 +38,11 @@ func (r *reporterMsg) SetValue(val float64) {
 	r.value = val
 }
 
-func (r *reporterMsg) SetMetricType(metricTyp uint8) {
+func (r *reporterMsg) SetMetricType(metricTyp CollectorType) {
 	r.metricType = metricTyp
 }
 
-func (r *reporterMsg) MetricType() uint8 {
+func (r *reporterMsg) MetricType() CollectorType {
 	return r.metricType
 }
 

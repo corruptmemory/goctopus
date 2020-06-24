@@ -9,8 +9,8 @@ type ReporterMsg interface {
 	SetPayload(map[string]string)
 	Value() float64
 	SetValue(float64)
-	SetMetricType(uint8)
-	MetricType() uint8
+	SetMetricType(CollectorType)
+	MetricType() CollectorType
 	Clone() ReporterMsg
 }
 
